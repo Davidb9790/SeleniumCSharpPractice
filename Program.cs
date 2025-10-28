@@ -4,13 +4,14 @@ using OpenQA.Selenium.Chrome;
 using WebDriverManager;
 using WebDriverManager.DriverConfigs.Impl;
 using OpenQA.Selenium.Support.UI;
+using SeleniumExtras.WaitHelpers;
 
 class Program
 {
     // Configurable variables
-    static string searchQuery = "Selenium C# Tutorial";
-    static string urlBing = "https://www.bing.com";
-    static int defaultWait = 10;
+    static string searchQuery = "Selenium (software)";
+    static string urlWikipedia = "https://en.wikipedia.org";
+    static int defaultWait = 20; // longer wait for dynamic pages
 
     static void Main()
     {
@@ -18,12 +19,15 @@ class Program
         new DriverManager().SetUpDriver(new ChromeConfig());
         var options = new ChromeOptions();
         options.AddExcludedArgument("enable-automation");
-        options.LeaveBrowserRunning = true; // keeps browser open for inspection
+        options.LeaveBrowserRunning = true; // keeps browser open
 
         IWebDriver driver = new ChromeDriver(options);
 
-        // Desktop path for screenshots
-        string screenshotFolder = @"C:\Users\david\OneDrive\Desktop\Selenium";
+        // Maximize window to avoid interactable issues
+        driver.Manage().Window.Maximize();
+
+        // Screenshot path
+        string screenshotFolder = @"C:\Users\david\Desktop\Selenium";
         string screenshotPath = System.IO.Path.Combine(screenshotFolder, "screenshot.png");
         if (!System.IO.Directory.Exists(screenshotFolder))
         {
@@ -32,18 +36,32 @@ class Program
 
         try
         {
-            NavigateTo(driver, urlBing);
+            // Navigate to Wikipedia
+            NavigateTo(driver, urlWikipedia);
 
-            var searchBox = WaitForElement(driver, By.Name("q"), defaultWait);
-            HandleRecaptcha(driver);
+            // Wait for search box to be clickable
+            var searchBox = new WebDriverWait(driver, TimeSpan.FromSeconds(defaultWait))
+                .Until(ExpectedConditions.ElementToBeClickable(By.Name("search")));
 
-            TypeAndSubmit(searchBox, searchQuery);
+            // Scroll and click to focus
+            ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollIntoView(true);", searchBox);
+            searchBox.Click();
 
-            var firstResult = WaitForElement(driver, By.CssSelector("h3"), defaultWait);
-            ClickElement(driver, firstResult);
+            // Type query
+            searchBox.Clear();
+            searchBox.SendKeys(searchQuery);
 
+            // Submit the search form using JavaScript
+            ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].closest('form').submit();", searchBox);
+
+            // Wait for the first heading on the results page to ensure page loaded
+            var firstHeading = new WebDriverWait(driver, TimeSpan.FromSeconds(defaultWait))
+                .Until(ExpectedConditions.ElementIsVisible(By.Id("firstHeading")));
+
+            // Take screenshot
             TakeScreenshot(driver, screenshotPath);
 
+            // Print page info
             PrintPageInfo(driver);
         }
         catch (Exception ex)
@@ -65,43 +83,6 @@ class Program
         Console.WriteLine($"Navigating to {url}...");
         driver.Navigate().GoToUrl(url);
         Console.WriteLine("Page title: " + driver.Title);
-    }
-
-    static IWebElement WaitForElement(IWebDriver driver, By by, int waitSeconds)
-    {
-        WebDriverWait wait = new WebDriverWait(driver, TimeSpan.FromSeconds(waitSeconds));
-        return wait.Until(d => d.FindElement(by));
-    }
-
-    static void HandleRecaptcha(IWebDriver driver)
-    {
-        if (driver.FindElements(By.CssSelector("iframe[src*='recaptcha'], .g-recaptcha, #recaptcha")).Count > 0)
-        {
-            Console.WriteLine("reCAPTCHA detected. Please solve it manually in the opened browser, then press Enter...");
-            Console.ReadLine();
-        }
-    }
-
-    static void TypeAndSubmit(IWebElement element, string text)
-    {
-        Console.WriteLine($"Typing: {text}");
-        element.Clear();
-        element.SendKeys(text);
-        element.Submit();
-    }
-
-    static void ClickElement(IWebDriver driver, IWebElement element)
-    {
-        Console.WriteLine("Clicking element...");
-        try
-        {
-            element.Click();
-        }
-        catch (ElementClickInterceptedException)
-        {
-            Console.WriteLine("Click intercepted. Retrying with Enter key...");
-            element.SendKeys(Keys.Enter);
-        }
     }
 
     static void TakeScreenshot(IWebDriver driver, string path)
